@@ -1,0 +1,7 @@
+[files]
+.TP
+.I /etc/kernel-builder.conf
+System-wide default config file.
+.TP
+.I ~/.kernel-builder.conf
+User config file, which is read last.

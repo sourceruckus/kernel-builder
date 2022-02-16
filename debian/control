@@ -1,0 +1,16 @@
+Package: kernel-builder
+Version: __version__
+Section: utils
+Priority: optional
+Architecture: __arch__
+Installed-Size: __size__
+Depends: bash, ruckusrd, extractenator, tar, findutils, make
+Replaces: ruckusrd (<< 0.18.0-1)
+#Breaks: ruckusrd (<< 0.18.0-1)
+Maintainer: Michael D Labriola <veggiemike@sourceruckus.org>
+Homepage: https://github.com/sourceruckus/kernel-builder
+Description: Source Ruckus Kernel-Builder - build it!
+The Source Ruckus Kernel-Builder is a utility for automating building
+ the Linux kernel and creating a self-extracting installer out of the
+ results.  The resulting installer can be installed locally or can
+ install itself on a list of remote hosts via SSH.

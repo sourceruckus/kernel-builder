@@ -1,0 +1,25 @@
+# -*- sh -*-
+*~
+/FOO
+
+# autotools files
+Makefile
+Makefile.in
+/aclocal.m4
+/autom4te.cache/
+/compile
+/config.guess
+/config.log
+/config.status
+/config.sub
+/configure
+/depcomp
+/install-sh
+/libtool
+/ltmain.sh
+/missing
+/test-driver
+
+# built files
+/kernel-builder.1
+/src/kernel-builder.sh

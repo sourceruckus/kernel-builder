@@ -1,0 +1,130 @@
+#!/bin/bash
+#
+# Source Ruckus Kernel-Builder - build it!
+#
+# Copyright 2018-2022 Michael D Labriola <veggiemike@sourceruckus.org>
+#
+# Licensed under the GPLv3. See the file COPYING for details. 
+#
+# This script is a utility for building the Linux kernel and installing it and
+# all needed files into a local directory.  After doing this, you can execute
+# kernel-installer (which installs to a remote host) or kernel-tar (which
+# creates a self-extracting installer).
+
+
+is_enabled() {
+	grep -q "^$1=y" include/config/auto.conf
+}
+
+
+if [ -z "$MAKE" ]; then
+    MAKE="make"
+fi
+export MAKE
+
+export SRP_ROOT=$PWD/FOO
+
+rm -rf $SRP_ROOT
+
+# detect when we're running out of a source tree and avoid PATH in that case
+if [ -f $(dirname $0)/linuxrc ]; then
+    ruckusrd=$(realpath $(dirname $0))/ruckusrd
+    kernel_tar=$(dirname $ruckusrd)/kernel-tar
+else
+    ruckusrd=ruckusrd
+    kernel_tar=kernel-tar
+fi
+
+CPUCOUNT=`grep processor /proc/cpuinfo | wc -l`
+# using CPUCOUNT*4 here because KBuild uses recursive Make calls... this
+# seems to mostly equate to a normal package's -jCPUCOUNT+1
+if [ -z "$NUMJOBS" ]; then
+    NUMJOBS=$((CPUCOUNT*4))
+fi
+
+# build
+$MAKE -j$NUMJOBS || exit 1
+
+# build/install modules
+$MAKE INSTALL_MOD_PATH=$SRP_ROOT modules_install || exit 2
+
+VERSION=$(basename $SRP_ROOT/lib/modules/*)
+VERSION_NAME=$VERSION
+if [ "$NOVERSION" = "stable" ]; then
+    VERSION_NAME=$(echo $VERSION | awk -F. '{printf "%s.%s.y", $1, $2}')
+elif [ -n "$NOVERSION" ]; then
+    VERSION_NAME=test
+fi
+
+# install /boot files in SRP_ROOT
+mkdir -p $SRP_ROOT/boot &&
+for x in arch/*/boot/bzImage; do
+    if [ ! -h $x ]; then
+        vmlinuz=$x
+        break
+    fi
+done
+SRCARCH=$(basename $(dirname $(dirname $vmlinuz)))
+cp -v $vmlinuz $SRP_ROOT/boot/vmlinuz-$VERSION_NAME &&
+cp -v System.map $SRP_ROOT/boot/System.map-$VERSION_NAME &&
+cp -v .config $SRP_ROOT/boot/config-$VERSION_NAME || exit -1
+
+# remove firmware, that should be handled by a linux-firmware package and we
+# don't want to overwrite it
+rm -rfv $SRP_ROOT/lib/firmware || exit -1
+
+# install kernel headers
+#
+echo -n "populating $SRP_ROOT/usr/src/linux-headers-$VERSION... "
+# NOTE: This should be enough to support out-of-tree module building.  It's
+#       mostly lifted from the kernel's srcipts/package/builddeb script.
+#
+# 1. create .hdrsrcfiles
+find . -name Makefile\* -o -name Kconfig\* -o -name \*.pl > $SRP_ROOT/.hdrsrcfiles
+find arch/*/include include scripts -type f -o -type l >> $SRP_ROOT/.hdrsrcfiles
+find arch/$SRCARCH -name module.lds -o -name Kbuild.platforms -o -name Platform >> $SRP_ROOT/.hdrsrcfiles
+find $(find arch/$SRCARCH -name include -o -name scripts -type d) -type f >> $SRP_ROOT/.hdrsrcfiles
+#
+# 2. create .hdrobjfiles
+if is_enabled CONFIG_STACK_VALIDATION; then
+    find tools/objtool -type f -executable >> $SRP_ROOT/.hdrobjfiles
+fi
+find arch/$SRCARCH/include Module.symvers include scripts -type f >> $SRP_ROOT/.hdrobjfiles
+if is_enabled CONFIG_GCC_PLUGINS; then
+    find scripts/gcc-plugins -name \*.so -o -name gcc-common.h >> $SRP_ROOT/.hdrobjfiles
+fi
+#
+# 3. copy files according to .hdrsrcfiles and .hdrobjfiles
+destdir=$SRP_ROOT/usr/src/linux-headers-$VERSION
+mkdir -p "$destdir"
+tar -c -f - -T - < $SRP_ROOT/.hdrsrcfiles | (cd $destdir; tar -xf -)
+tar -c -f - -T - < $SRP_ROOT/.hdrobjfiles | (cd $destdir; tar -xf -)
+echo DONE
+#
+# 4. set build symlink in modules dir to point at header tree
+rm -f $SRP_ROOT/lib/modules/$VERSION/{build,source}
+ln -vsf /usr/src/linux-headers-$VERSION $SRP_ROOT/lib/modules/$VERSION/build
+#
+# 5. cleanup
+rm -f $SRP_ROOT/.hdrsrcfiles $SRP_ROOT/.hdrobjfiles
+
+# additional step, not entirely sure if this is legit, but the one out-of-tree
+# module I've tried to build recently (drbd9) was looking for .config...  I
+# figure it can't hurt.
+cp -v .config $SRP_ROOT/usr/src/linux-headers-$VERSION/.config || exit 1
+
+# set stable symlinks for modules and headers
+if [ -n "$NOVERSION" ]; then
+    ln -vsf $VERSION $SRP_ROOT/lib/modules/$VERSION_NAME
+    ln -vsf linux-headers-$VERSION $SRP_ROOT/usr/src/linux-headers-$VERSION_NAME
+fi
+
+# create initrd using ruckusrd
+$ruckusrd -v -b $SRP_ROOT -o modinject=1 $SRP_ROOT/boot/initrd-$VERSION_NAME.img $VERSION_NAME || exit 3
+
+# create kernel-installer file
+$kernel_tar || exit 4
+
+echo
+echo VERSION: $VERSION
+echo VERSION_NAME: $VERSION_NAME

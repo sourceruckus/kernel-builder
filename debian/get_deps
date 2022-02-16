@@ -1,0 +1,36 @@
+#!/bin/bash
+
+usage()
+{
+    echo "get a list of dependencies (based on libraries) for a deb control file from"
+    echo "a bunch of files/dirs recursively"
+    echo
+    echo "usage: $(basename $0) FILE1 [FILE2] ..."
+}
+
+
+if [ ! $# -ge 1 ]; then
+    usage
+    exit 1
+fi
+
+
+libs=$((find $* -type f | xargs ldd 2>/dev/null) | grep -v "not found" | awk '/=>/ {print $3}' | sort | uniq)
+echo
+echo libs: $libs
+
+if [ -z "$libs" ]; then
+    echo "no libs detected, nothing more to do, goodbye"
+    exit 0
+fi
+
+pkgs=$(dpkg -S $libs | awk -F: '{print $1}' | sort | uniq)
+if [ -z "$pkgs" ]; then
+    echo >>/dev/stderr "libs detected, but no pkgs found... you have problems"
+    exit 1
+fi
+
+echo
+echo pkgs: $(echo $pkgs | sed 's| |, |g')
+
+exit 0
