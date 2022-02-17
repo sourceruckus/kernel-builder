@@ -9,8 +9,9 @@ Replaces: ruckusrd (<< 0.18.0-1)
 #Breaks: ruckusrd (<< 0.18.0-1)
 Maintainer: Michael D Labriola <veggiemike@sourceruckus.org>
 Homepage: https://github.com/sourceruckus/kernel-builder
-Description: Source Ruckus Kernel-Builder - build it!
+Description: Source Ruckus Kernel-Builder - build that kernel like a wizard!
 The Source Ruckus Kernel-Builder is a utility for automating building
- the Linux kernel and creating a self-extracting installer out of the
- results.  The resulting installer can be installed locally or can
- install itself on a list of remote hosts via SSH.
+ the Linux kernel, creating a universal initrd using RuckusRD, and
+ wrapping it all up into a self-extracting kernel installer.  The
+ resulting installer can be installed locally or can install itself on
+ a list of remote hosts via SSH.

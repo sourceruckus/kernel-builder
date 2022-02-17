@@ -1,15 +1,186 @@
 #!/bin/bash
 #
-# Source Ruckus Kernel-Builder - build it!
+# Source Ruckus Kernel-Builder - build that kernel like a wizard!
 #
 # Copyright 2018-2022 Michael D Labriola <veggiemike@sourceruckus.org>
 #
 # Licensed under the GPLv3. See the file COPYING for details. 
 #
 # This script is a utility for building the Linux kernel and installing it and
-# all needed files into a local directory.  After doing this, you can execute
-# kernel-installer (which installs to a remote host) or kernel-tar (which
-# creates a self-extracting installer).
+# all needed files into a local directory, creating an initrd, and
+# kernel-installer.
+
+
+# assume we're in the source tree if $PWD/kernel-builder.sh.in exists
+if [ -f $(dirname $0)/kernel-builder.sh.in ]; then
+    LIBDIR=$(realpath $(dirname $0))
+    CONFDIR=$LIBDIR
+else
+    LIBDIR=__LIBDIR__
+    CONFDIR=__CONFDIR__
+fi
+. $LIBDIR/kernel-builder.sh
+[ -f $CONFDIR/kernel-builder.conf ] && . $CONFDIR/kernel-builder.conf
+[ -f ~/.kernel-builder.conf ] && . ~/.kernel-builder.conf
+
+# assign defaults to these if not set in the environment (or config file)
+# already
+#
+# NOTE: We export them too, so that our child kernel-tar process can use them.
+#
+export MAKE=${MAKE:=make}
+export RUCKUSRD=${RUCKUSRD:=ruckusrd}
+export KERNEL_TAR=${KERNEL_TAR:=$LIBDIR/kernel-tar}
+export EXTRACTENATOR=${EXTRACTENATOR:=extractenator}
+
+
+usage()
+{
+    if [ -n "$*" ]; then
+        echo ERROR: $*
+        echo
+    fi
+    echo "Source Ruckus Kernel-Builder - build that kernel like a wizard!"
+    echo "Copyright (C) 2018-2022 Michael D Labriola <veggiemike@sourceruckus.org>"
+    echo
+    echo "The Source Ruckus Kernel-Builder is a utility for automating building the Linux"
+    echo "kernel, creating a universal initrd using RuckusRD, and wrapping it all up into"
+    echo "a self-extracting kernel installer.  The resulting installer can be installed"
+    echo "locally or can install itself on a list of remote hosts via SSH."
+    echo
+    echo "Execute this inside an already configured (e.g., via make menuconfig) kernel"
+    echo "source tree."
+    echo
+    echo "usage: `basename $0` OPTIONS..."
+    echo
+    echo "  -h, --help                Show this help message and exit."
+    echo
+    echo "  -V, --version             Show version string and exit."
+    echo
+    echo "  -K, --kernel-only         Just compile the kernel and install its files in"
+    echo "                            \$PWD/FOO."
+    echo
+    echo "  -k, --kernel-and-initrd   Stop after generating the initrd via RuckusRD and"
+    echo "                            installing it in \$PWD/FOO/boot.  Basically, stop"
+    echo "                            before creating the installer.  This can be usefull"
+    echo "                            for testing new kernel configurations before you're"
+    echo "                            really ready to install and/or distribute the"
+    echo "                            kernel."
+    echo
+    echo "  -n, --numjobs=N           Use N jobs for compiling.  Default is CPUCOUNT*4,"
+    echo "                            which should peg CPU usage at 100% on most systems"
+    echo "                            and result in the fastest build times.  If you want"
+    echo "                            to use less CPU and let the compilation take more"
+    echo "                            time, specify a smaller value for N with this"
+    echo "                            option."
+    echo
+    echo "  -s, --stable              Build 'stable' kernel.  This results in /boot files"
+    echo "                            being named with a trailing .y instead of the point"
+    echo "                            release number, so you don't have to update the"
+    echo "                            bootloader config after installation.  There's also"
+    echo "                            a .y symlink in /lib/modules and /usr/src pointing"
+    echo "                            to the appropriately versioned directories as well"
+    echo "                            as installation code to move the symlink and remove"
+    echo "                            old files.  The idea here is that installing 5.10.42"
+    echo "                            should completely replace all of 5.10.41's files and"
+    echo "                            require only a simple reboot w/out any other"
+    echo "                            reconfiguration to get into the new kernel."
+    echo
+    echo "  -t, --test                Build 'test' kernel.  These kernels have 'test' in"
+    echo "                            filenames instead of a version string.  This option"
+    echo "                            is for facilitating quick bisect jobs, where you're"
+    echo "                            compiling different kernel versions and rebooting"
+    echo "                            over and over w/out having to reconfigure the"
+    echo "                            bootloader every single time."
+}
+
+
+# call getopt
+#
+# NOTE: This handles spacing out arguments correctly for the case statement
+#       below and checks for unknown flags.  Required flags are checked for
+#       below.
+#
+# NOTE: The set -- command causes the resulting output of getopt to replace the
+#       current positional arguments (e.g, $1, $2).
+#
+__opts=$(getopt -un $(basename $0) \
+    -o hVKkn:st \
+    --long help,version,kernel-only,kernel-and-initrd,numjobs:,stable,test -- $@)
+if [ $? != 0 ]; then
+    echo
+    usage
+    exit 1
+fi
+set -- $__opts
+
+
+# set some defaults
+CPUCOUNT=`grep processor /proc/cpuinfo | wc -l`
+# using CPUCOUNT*4 here because KBuild uses recursive Make calls... this
+# seems to mostly equate to a normal package's -jCPUCOUNT+1
+NUMJOBS=$((CPUCOUNT*4))
+
+
+# parse the new positional arguments
+build_initrd=y
+build_installer=y
+stable_kernel=
+test_kernel=
+while true; do
+    case "$1" in
+        -V|--version)
+            echo "Source Ruckus Kernel-Builder $VERSION"
+            exit 0
+            ;;
+        -K|--kernel-only)
+            build_initrd=
+            build_installer=
+            shift
+            ;;
+        -k|--kernel-and-initrd)
+            build_installer=
+            shift
+            ;;
+        -n|--numjobs)
+            NUMJOBS=$2
+            shift 2
+            ;;
+        -s|--stable)
+            stable_kernel=y
+            shift
+            ;;
+        -t|--test)
+            test_kernel=y
+            shift
+            ;;
+	--)
+            # done parsing
+            shift
+            break
+            ;;
+	*)
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# sanity checking
+if [ -n "$stable_kernel" -a -n "$test_kernel" ]; then
+    usage "--test and --stable are mutually exclusive"
+    exit 1
+fi
+
+echo build_initrd: $build_initrd
+echo build_installer: $build_installer
+echo stable_kernel: $stable_kernel
+echo test_kernel: $test_kernel
+echo NUMJOBS: $NUMJOBS
+echo MAKE: $MAKE
+echo RUCKUSRD: $RUCKUSRD
+echo KERNEL_TAR: $KERNEL_TAR
+echo EXTRACTENATOR: $EXTRACTENATOR
 
 
 is_enabled() {
@@ -17,47 +188,25 @@ is_enabled() {
 }
 
 
-if [ -z "$MAKE" ]; then
-    MAKE="make"
-fi
-export MAKE
-
-export SRP_ROOT=$PWD/FOO
-
-rm -rf $SRP_ROOT
-
-# detect when we're running out of a source tree and avoid PATH in that case
-if [ -f $(dirname $0)/linuxrc ]; then
-    ruckusrd=$(realpath $(dirname $0))/ruckusrd
-    kernel_tar=$(dirname $ruckusrd)/kernel-tar
-else
-    ruckusrd=ruckusrd
-    kernel_tar=kernel-tar
-fi
-
-CPUCOUNT=`grep processor /proc/cpuinfo | wc -l`
-# using CPUCOUNT*4 here because KBuild uses recursive Make calls... this
-# seems to mostly equate to a normal package's -jCPUCOUNT+1
-if [ -z "$NUMJOBS" ]; then
-    NUMJOBS=$((CPUCOUNT*4))
-fi
+export FAKEROOT=$PWD/FOO
+rm -rf $FAKEROOT
 
 # build
 $MAKE -j$NUMJOBS || exit 1
 
 # build/install modules
-$MAKE INSTALL_MOD_PATH=$SRP_ROOT modules_install || exit 2
+$MAKE INSTALL_MOD_PATH=$FAKEROOT modules_install || exit 2
 
-VERSION=$(basename $SRP_ROOT/lib/modules/*)
+VERSION=$(basename $FAKEROOT/lib/modules/*)
 VERSION_NAME=$VERSION
-if [ "$NOVERSION" = "stable" ]; then
+if [ -n "$stable_kernel" ]; then
     VERSION_NAME=$(echo $VERSION | awk -F. '{printf "%s.%s.y", $1, $2}')
-elif [ -n "$NOVERSION" ]; then
+elif [ -n "$test_kernel" ]; then
     VERSION_NAME=test
 fi
 
-# install /boot files in SRP_ROOT
-mkdir -p $SRP_ROOT/boot &&
+# install /boot files in FAKEROOT
+mkdir -p $FAKEROOT/boot &&
 for x in arch/*/boot/bzImage; do
     if [ ! -h $x ]; then
         vmlinuz=$x
@@ -65,65 +214,69 @@ for x in arch/*/boot/bzImage; do
     fi
 done
 SRCARCH=$(basename $(dirname $(dirname $vmlinuz)))
-cp -v $vmlinuz $SRP_ROOT/boot/vmlinuz-$VERSION_NAME &&
-cp -v System.map $SRP_ROOT/boot/System.map-$VERSION_NAME &&
-cp -v .config $SRP_ROOT/boot/config-$VERSION_NAME || exit -1
+cp -v $vmlinuz $FAKEROOT/boot/vmlinuz-$VERSION_NAME &&
+cp -v System.map $FAKEROOT/boot/System.map-$VERSION_NAME &&
+cp -v .config $FAKEROOT/boot/config-$VERSION_NAME || exit -1
 
 # remove firmware, that should be handled by a linux-firmware package and we
 # don't want to overwrite it
-rm -rfv $SRP_ROOT/lib/firmware || exit -1
+rm -rfv $FAKEROOT/lib/firmware || exit -1
 
 # install kernel headers
 #
-echo -n "populating $SRP_ROOT/usr/src/linux-headers-$VERSION... "
+echo -n "populating $FAKEROOT/usr/src/linux-headers-$VERSION... "
 # NOTE: This should be enough to support out-of-tree module building.  It's
 #       mostly lifted from the kernel's srcipts/package/builddeb script.
 #
 # 1. create .hdrsrcfiles
-find . -name Makefile\* -o -name Kconfig\* -o -name \*.pl > $SRP_ROOT/.hdrsrcfiles
-find arch/*/include include scripts -type f -o -type l >> $SRP_ROOT/.hdrsrcfiles
-find arch/$SRCARCH -name module.lds -o -name Kbuild.platforms -o -name Platform >> $SRP_ROOT/.hdrsrcfiles
-find $(find arch/$SRCARCH -name include -o -name scripts -type d) -type f >> $SRP_ROOT/.hdrsrcfiles
+find . -name Makefile\* -o -name Kconfig\* -o -name \*.pl > $FAKEROOT/.hdrsrcfiles
+find arch/*/include include scripts -type f -o -type l >> $FAKEROOT/.hdrsrcfiles
+find arch/$SRCARCH -name module.lds -o -name Kbuild.platforms -o -name Platform >> $FAKEROOT/.hdrsrcfiles
+find $(find arch/$SRCARCH -name include -o -name scripts -type d) -type f >> $FAKEROOT/.hdrsrcfiles
 #
 # 2. create .hdrobjfiles
 if is_enabled CONFIG_STACK_VALIDATION; then
-    find tools/objtool -type f -executable >> $SRP_ROOT/.hdrobjfiles
+    find tools/objtool -type f -executable >> $FAKEROOT/.hdrobjfiles
 fi
-find arch/$SRCARCH/include Module.symvers include scripts -type f >> $SRP_ROOT/.hdrobjfiles
+find arch/$SRCARCH/include Module.symvers include scripts -type f >> $FAKEROOT/.hdrobjfiles
 if is_enabled CONFIG_GCC_PLUGINS; then
-    find scripts/gcc-plugins -name \*.so -o -name gcc-common.h >> $SRP_ROOT/.hdrobjfiles
+    find scripts/gcc-plugins -name \*.so -o -name gcc-common.h >> $FAKEROOT/.hdrobjfiles
 fi
 #
 # 3. copy files according to .hdrsrcfiles and .hdrobjfiles
-destdir=$SRP_ROOT/usr/src/linux-headers-$VERSION
+destdir=$FAKEROOT/usr/src/linux-headers-$VERSION
 mkdir -p "$destdir"
-tar -c -f - -T - < $SRP_ROOT/.hdrsrcfiles | (cd $destdir; tar -xf -)
-tar -c -f - -T - < $SRP_ROOT/.hdrobjfiles | (cd $destdir; tar -xf -)
+tar -c -f - -T - < $FAKEROOT/.hdrsrcfiles | (cd $destdir; tar -xf -)
+tar -c -f - -T - < $FAKEROOT/.hdrobjfiles | (cd $destdir; tar -xf -)
 echo DONE
 #
 # 4. set build symlink in modules dir to point at header tree
-rm -f $SRP_ROOT/lib/modules/$VERSION/{build,source}
-ln -vsf /usr/src/linux-headers-$VERSION $SRP_ROOT/lib/modules/$VERSION/build
+rm -f $FAKEROOT/lib/modules/$VERSION/{build,source}
+ln -vsf /usr/src/linux-headers-$VERSION $FAKEROOT/lib/modules/$VERSION/build
 #
 # 5. cleanup
-rm -f $SRP_ROOT/.hdrsrcfiles $SRP_ROOT/.hdrobjfiles
+rm -f $FAKEROOT/.hdrsrcfiles $FAKEROOT/.hdrobjfiles
 
 # additional step, not entirely sure if this is legit, but the one out-of-tree
 # module I've tried to build recently (drbd9) was looking for .config...  I
 # figure it can't hurt.
-cp -v .config $SRP_ROOT/usr/src/linux-headers-$VERSION/.config || exit 1
+cp -v .config $FAKEROOT/usr/src/linux-headers-$VERSION/.config || exit 1
 
 # set stable symlinks for modules and headers
 if [ -n "$NOVERSION" ]; then
-    ln -vsf $VERSION $SRP_ROOT/lib/modules/$VERSION_NAME
-    ln -vsf linux-headers-$VERSION $SRP_ROOT/usr/src/linux-headers-$VERSION_NAME
+    ln -vsf $VERSION $FAKEROOT/lib/modules/$VERSION_NAME
+    ln -vsf linux-headers-$VERSION $FAKEROOT/usr/src/linux-headers-$VERSION_NAME
 fi
 
+[ -z "$build_initrd" ] && exit 0
+
 # create initrd using ruckusrd
-$ruckusrd -v -b $SRP_ROOT -o modinject=1 $SRP_ROOT/boot/initrd-$VERSION_NAME.img $VERSION_NAME || exit 3
+$RUCKUSRD -v -b $FAKEROOT -o modinject=1 $FAKEROOT/boot/initrd-$VERSION_NAME.img $VERSION_NAME || exit 3
+
+[ -z "$build_installer" ] && exit 0
 
 # create kernel-installer file
-$kernel_tar || exit 4
+$KERNEL_TAR || exit 4
 
 echo
 echo VERSION: $VERSION
