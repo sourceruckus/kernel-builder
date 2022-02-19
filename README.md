@@ -32,7 +32,7 @@ usage: kernel-builder OPTIONS...
                             really ready to install and/or distribute the
                             kernel.
 
-  -n, --numjobs=N           Use N jobs for compiling.  Default is CPUCOUNT*4,
+  -n, --numjobs=N           Use N jobs for compiling.  Default is CPUCOUNT+1,
                             which should peg CPU usage at 100% on most systems
                             and result in the fastest build times.  If you want
                             to use less CPU and let the compilation take more

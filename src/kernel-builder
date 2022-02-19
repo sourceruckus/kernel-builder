@@ -67,7 +67,7 @@ usage()
     echo "                            really ready to install and/or distribute the"
     echo "                            kernel."
     echo
-    echo "  -n, --numjobs=N           Use N jobs for compiling.  Default is CPUCOUNT*4,"
+    echo "  -n, --numjobs=N           Use N jobs for compiling.  Default is CPUCOUNT+1,"
     echo "                            which should peg CPU usage at 100% on most systems"
     echo "                            and result in the fastest build times.  If you want"
     echo "                            to use less CPU and let the compilation take more"
@@ -117,9 +117,7 @@ set -- $__opts
 
 # set some defaults
 CPUCOUNT=`grep processor /proc/cpuinfo | wc -l`
-# using CPUCOUNT*4 here because KBuild uses recursive Make calls... this
-# seems to mostly equate to a normal package's -jCPUCOUNT+1
-NUMJOBS=$((CPUCOUNT*4))
+NUMJOBS=$((CPUCOUNT+1))
 
 
 # parse the new positional arguments
