@@ -260,8 +260,8 @@ rm -f $FAKEROOT/.hdrsrcfiles $FAKEROOT/.hdrobjfiles
 # figure it can't hurt.
 cp -v .config $FAKEROOT/usr/src/linux-headers-$VERSION/.config || exit 1
 
-# set stable symlinks for modules and headers
-if [ -n "$NOVERSION" ]; then
+# set stable/test symlinks for modules and headers
+if [ -n "$stable_kernel" -o -n "$test_kernel" ]; then
     ln -vsf $VERSION $FAKEROOT/lib/modules/$VERSION_NAME
     ln -vsf linux-headers-$VERSION $FAKEROOT/usr/src/linux-headers-$VERSION_NAME
 fi
