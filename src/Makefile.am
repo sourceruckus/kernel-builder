@@ -1,8 +1,8 @@
 dist_bin_SCRIPTS =
 dist_bin_SCRIPTS += kernel-builder
 
-sysconf_DATA =
-sysconf_DATA += kernel-builder.conf
+dist_sysconf_DATA =
+dist_sysconf_DATA += kernel-builder.conf
 
 pkgdata_DATA =
 pkgdata_DATA += kernel-builder.sh
