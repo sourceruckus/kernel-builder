@@ -7,7 +7,7 @@ https://github.com/sourceruckus/kernel-builder/commits/master.
 Tagger: Michael D Labriola <veggiemike@sourceruckus.org>
 Date:   TBD
 
-Doit v1.0.0
+Source Ruckus Kernel-Builder v1.0.0
 
 Split out of ruckusrd, build system overhaul, including help2man generated
 manpage and dpkg target.
