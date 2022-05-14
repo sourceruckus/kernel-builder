@@ -1,3 +1,29 @@
+[environment variables]
+.TP
+.I MAKE
+Path to
+.BR make ,
+overriding
+.BR $PATH .
+.TP
+.I RUCKUSRD
+Path to
+.BR ruckusrd ,
+overriding
+.BR $PATH .
+.TP
+.I KERNEL_TAR
+Path to
+.BR kernel-tar ,
+overriding default of
+.BR $LIBDIR/kernel-tar .
+.TP
+.I EXTRACTENATOR
+Path to
+.BR extractenator ,
+overriding
+.BR $PATH .
+
 [files]
 .TP
 .I /etc/kernel-builder.conf

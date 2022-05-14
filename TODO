@@ -1,4 +1,2 @@
 -*- mode: org -*-
 
-- add Breaks ruckusrd to debian/control once ruckusrd v0.18 is out (w/ doit
-  removed)
