@@ -1,7 +1,7 @@
 Source Ruckus Kernel-Builder - build that kernel like a wizard!
 ===============================================================
 
-Copyright 2018-2022 Michael D Labriola <veggiemike@sourceruckus.org>
+Copyright 2018-2023 Michael D Labriola <veggiemike@sourceruckus.org>
 
 Licensed under the GPLv3. See the file COPYING for details. 
 

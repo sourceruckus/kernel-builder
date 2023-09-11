@@ -2,7 +2,7 @@
 #
 # Source Ruckus Kernel-Builder - build that kernel like a wizard!
 #
-# Copyright 2018-2022 Michael D Labriola <veggiemike@sourceruckus.org>
+# Copyright 2018-2023 Michael D Labriola <veggiemike@sourceruckus.org>
 #
 # Licensed under the GPLv3. See the file COPYING for details. 
 #
@@ -41,7 +41,7 @@ usage()
         echo
     fi
     echo "Source Ruckus Kernel-Builder - build that kernel like a wizard!"
-    echo "Copyright (C) 2018-2022 Michael D Labriola <veggiemike@sourceruckus.org>"
+    echo "Copyright (C) 2018-2023 Michael D Labriola <veggiemike@sourceruckus.org>"
     echo
     echo "The Source Ruckus Kernel-Builder is a utility for automating building the Linux"
     echo "kernel, creating a universal initrd using RuckusRD, and wrapping it all up into"
