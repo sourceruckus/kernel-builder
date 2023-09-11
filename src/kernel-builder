@@ -290,6 +290,10 @@ rm -f $FAKEROOT/.hdrsrcfiles $FAKEROOT/.hdrobjfiles
 # additional step, not entirely sure if this is legit, but the one out-of-tree
 # module I've tried to build recently (drbd9) was looking for .config...  I
 # figure it can't hurt.
+#
+# NOTE: Yes, it's legit.  This is also done by the kernel's builddep script.  I
+#       must have missed it in my original implementation.
+#
 cp -v .config $FAKEROOT/usr/src/linux-headers-$VERSION/.config || exit 1
 
 # set stable/test symlinks for modules and headers
