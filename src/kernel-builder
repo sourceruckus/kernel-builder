@@ -181,6 +181,13 @@ echo KERNEL_TAR: $KERNEL_TAR
 echo EXTRACTENATOR: $EXTRACTENATOR
 
 
+# NOTE: Using this function (which is how the in-kernel builddep script works),
+#       is probably a bad idea.  We've already gotten bitten once by kernel
+#       config options changing, best to look somewhere else.  Plus, the
+#       kernel-builder script is supposed to work for *any* kernel version (ok,
+#       that's an overstatement), so we can't guarantee any particular kernel
+#       config option names.
+#
 is_enabled() {
 	grep -q "^$1=y" include/config/auto.conf
 }
@@ -226,6 +233,9 @@ echo -n "populating $FAKEROOT/usr/src/linux-headers-$VERSION... "
 # NOTE: This should be enough to support out-of-tree module building.  It's
 #       mostly lifted from the kernel's srcipts/package/builddeb script.
 #
+#       We should periodically check the kernel's builddeb diffs to make sure
+#       we don't miss anything important.  Last check was against v6.1.
+#
 # 1. create .hdrsrcfiles
 find . -name Makefile\* -o -name Kconfig\* -o -name \*.pl > $FAKEROOT/.hdrsrcfiles
 find arch/*/include include scripts -type f -o -type l >> $FAKEROOT/.hdrsrcfiles
@@ -233,12 +243,34 @@ find arch/$SRCARCH -name module.lds -o -name Kbuild.platforms -o -name Platform 
 find $(find arch/$SRCARCH -name include -o -name scripts -type d) -type f >> $FAKEROOT/.hdrsrcfiles
 #
 # 2. create .hdrobjfiles
-if is_enabled CONFIG_STACK_VALIDATION; then
+#
+# NOTE: We used to key off of CONFIG_STACK_VALIDATION here (because that's what
+#       the kernel's builddeb script did), but during 5.18 development they
+#       replaced that config item with a handful of different ones... and we
+#       started accidentally leaving out objtool of our final
+#       package... oopsie.  Instead of switching to CONFIG_OBJTOOL, I've
+#       instead chosen to key off the existence of the objtool directory.
+#       We're already using find to only grab executables, which will do
+#       nothing if there aren't any, so why add the extra potential point of
+#       failure by trying too hard to leaf through config options.
+#
+#       I suppose the only reason would be to prevent including "stale" files
+#       from getting distributed (e.g., tested building with CONFIG_OBJTOOL
+#       then turned it back off and ran kernel-builder).  I'll take that
+#       chance.
+#
+if [ -d tools/objtool ]; then
     find tools/objtool -type f -executable >> $FAKEROOT/.hdrobjfiles
 fi
 find arch/$SRCARCH/include Module.symvers include scripts -type f >> $FAKEROOT/.hdrobjfiles
-if is_enabled CONFIG_GCC_PLUGINS; then
-    find scripts/gcc-plugins -name \*.so -o -name gcc-common.h >> $FAKEROOT/.hdrobjfiles
+#
+# NOTE: Similar to the above config comment, we used to key off
+#       CONFIG_GCC_PLUGINS for this.  While this config option hasn't changed
+#       (yet?), it seems unnecesary to check the config option.  If the .so
+#       files exist, we install them.
+#
+if [ -d scripts/gcc-plugins ]; then
+    find scripts/gcc-plugins -name \*.so >> $FAKEROOT/.hdrobjfiles
 fi
 #
 # 3. copy files according to .hdrsrcfiles and .hdrobjfiles
