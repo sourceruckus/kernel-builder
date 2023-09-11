@@ -3,6 +3,14 @@
 For the latest and greatest, see
 https://github.com/sourceruckus/kernel-builder/commits/master.
 
+* v1.0.1
+Tagger: Michael D Labriola <veggiemike@sourceruckus.org>
+Date:   Mon Sep 11 13:09:06 EDT 2023
+
+Source Ruckus Kernel-Builder v1.0.1
+
+Point release with fixes for newer kernels.
+
 * v1.0.0
 Tagger: Michael D Labriola <veggiemike@sourceruckus.org>
 Date:   Sat May 14 01:30:25 EDT 2022

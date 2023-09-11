@@ -2,7 +2,7 @@ AC_PREREQ([2.65])
 
 m4_define(kb_major_version, 1)
 m4_define(kb_minor_version, 0)
-m4_define(kb_micro_version, 0)
+m4_define(kb_micro_version, 1)
 m4_define(kb_devtag, [])
 m4_ifnblank(kb_devtag,
 	[m4_define(kb_version, kb_major_version.kb_minor_version.kb_micro_version-kb_devtag)],
